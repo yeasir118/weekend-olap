@@ -60,3 +60,78 @@ models:
         data_tests: [unique, not_null]
       - name: has_valid_details
         description: False when marketing's budget or start date couldn't be read (see stg_campaigns).
+
+  - name: fct_orders
+    description: >
+      One row per order placed, in any status. Revenue definition: status paid or shipped,
+      and not soft-deleted. For revenue questions sum `revenue`, not `order_total`.
+    columns:
+      - name: order_id
+        description: Natural key of the order (a degenerate dimension; there is no dim_orders).
+        data_tests: [unique, not_null]
+      - name: customer_key
+        data_tests: [not_null]
+      - name: campaign_key
+        description: NULL when the order isn't attributed to a campaign.
+      - name: order_date
+        description: Business date of the order in var reporting_timezone. Joins dim_date.date_day.
+        data_tests: [not_null]
+      - name: is_revenue
+        description: True when the order counts as revenue (paid or shipped, not soft-deleted).
+      - name: line_count
+        description: Number of order lines (distinct products).
+      - name: item_count
+        description: Total units across all lines.
+      - name: order_total
+        description: Amount of the order as recorded by the app, whatever its status.
+      - name: revenue
+        description: order_total when is_revenue, otherwise 0. Additive; sum it freely.
+
+  - name: fct_order_items
+    description: >
+      One row per order line. Same process as fct_orders at a finer grain: use it for
+      anything by product or category. Lines reconcile to fct_orders.order_total
+      (tests/assert_order_totals_reconcile.sql).
+    columns:
+      - name: order_item_id
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: The order this line belongs to (degenerate dimension). Joins fct_orders.
+        data_tests: [not_null]
+      - name: product_key
+        data_tests: [not_null]
+      - name: customer_key
+        description: Inherited from the order. NULL would mean the line's order is missing.
+        data_tests: [not_null]
+      - name: order_date
+        description: Business date of the order. Joins dim_date.date_day.
+        data_tests: [not_null]
+      - name: is_revenue
+        description: True when the order counts as revenue and the line isn't soft-deleted.
+      - name: unit_price
+        description: Price actually paid per unit at order time (not dim_products.current_unit_price).
+      - name: line_total
+        description: quantity * unit_price, whatever the order's status.
+      - name: revenue
+        description: line_total when is_revenue, otherwise 0. Additive; sum it freely.
+
+  - name: fct_payments
+    description: >
+      One row per payment received. Dated by when the money arrived (payment_date), not when
+      the order was placed.
+    columns:
+      - name: payment_id
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: The order paid for (degenerate dimension). Joins fct_orders.
+        data_tests: [not_null]
+      - name: customer_key
+        description: The customer of the order paid for.
+        data_tests: [not_null]
+      - name: payment_date
+        description: Business date the payment was received, in var reporting_timezone. Joins dim_date.date_day.
+        data_tests: [not_null]
+      - name: payment_method
+        description: card, paypal or bank_transfer. Kept on the fact; too small for its own dimension.
+      - name: amount
+        description: Amount received. Additive.
