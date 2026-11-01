@@ -10,4 +10,7 @@ dbt-duckdb==1.11.1
 
 # Ingestion helpers
 python-dotenv==1.2.4
+
+# Source system simulation (seed.py, simulate_changes.py write to Postgres as "the app")
 Faker==40.44.0
+psycopg[binary]==3.3.6
