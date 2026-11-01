@@ -5,7 +5,7 @@ rows changed since the watermark recorded here.
 
 For each table:
     postgres.public.<table>  ->  bronze.raw_<table>   (all source columns, unchanged)
-                                 + source_table, ingested_at metadata
+                                 + ingested_at metadata
                                  + primary key on id   (needed by the incremental upsert)
     meta.sync_state.last_synced_at = max(updated_at) of the copied rows
 
@@ -27,10 +27,7 @@ def snapshot_table(con: duckdb.DuckDBPyConnection, table: str) -> tuple[int, int
     con.execute(
         f"""
         CREATE OR REPLACE TABLE bronze.raw_{table} AS
-        SELECT
-            *,
-            'postgres.public.{table}' AS source_table,
-            now() AS ingested_at
+        SELECT *, now() AS ingested_at
         FROM pg.public.{table}
         """
     )
