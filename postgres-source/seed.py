@@ -9,17 +9,14 @@ Deterministic (fixed random seed) and destructive: all source tables are truncat
     .venv\\Scripts\\python postgres-source\\seed.py
 """
 
-import os
 import random
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 
 import psycopg
-from dotenv import load_dotenv
 from faker import Faker
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from db import connect
 
 RANDOM_SEED = 42
 N_USERS = 200
@@ -226,18 +223,10 @@ def main() -> None:
     products = build_products(fake)
     orders, items, payments = build_orders(users, products)
 
-    load_dotenv(REPO_ROOT / ".env")
-    conninfo = {
-        "host": "localhost",
-        "port": os.environ["POSTGRES_PORT"],
-        "dbname": os.environ["POSTGRES_DB"],
-        "user": os.environ["POSTGRES_USER"],
-        "password": os.environ["POSTGRES_PASSWORD"],
-    }
     timestamps = ["created_at", "updated_at", "deleted_at"]
 
     # One transaction: the database is either fully re-seeded or left as it was.
-    with psycopg.connect(**conninfo) as conn, conn.cursor() as cur:
+    with connect() as conn, conn.cursor() as cur:
         cur.execute("TRUNCATE payments, order_items, orders, products, users RESTART IDENTITY")
 
         insert(cur, "users", ["id", "email", "first_name", "last_name", "city", "country", *timestamps], users)
