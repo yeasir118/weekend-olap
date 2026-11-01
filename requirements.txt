@@ -1,0 +1,13 @@
+# Python 3.13 (dbt does not support the system's 3.7). Create the venv with: py -3.13 -m venv .venv
+# Direct dependencies only, pinned exactly so the pipeline rebuilds identically.
+
+# Warehouse engine (also used to read Postgres via its postgres extension)
+duckdb==2.0.0
+
+# Transformations. Staying on dbt Core v1: dbt-duckdb and the outline's syntax target v1.
+dbt-core==1.12.6
+dbt-duckdb==1.11.1
+
+# Ingestion helpers
+python-dotenv==1.2.4
+Faker==40.44.0
