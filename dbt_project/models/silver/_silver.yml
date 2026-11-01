@@ -1,0 +1,29 @@
+version: 2
+
+# Silver staging models: one per Bronze table. They rename, cast and clean, and nothing more:
+# no joins, no aggregations, no business logic (that's Gold's job).
+#
+# Conventions for every stg_ model:
+#   - Keys are named after the entity: users.id -> customer_id, orders.id -> order_id, ...
+#   - Timestamps (*_at) are UTC, as TIMESTAMP without time zone, so a date derived from them
+#     is the same on every machine regardless of its local time zone.
+#   - Categorical text (status, method, category) is trimmed and lowercased.
+#   - Soft-deleted rows are kept and flagged with is_deleted, not filtered out. Gold decides
+#     per use case: a discontinued product still belongs to its past orders' revenue.
+#   - Hard-deleted source rows are still present (Bronze never learns about them, see notes.md).
+
+models:
+  - name: stg_users
+    description: One row per user account (a customer). Includes closed accounts (is_deleted).
+
+  - name: stg_products
+    description: One row per product, at its current price. Includes discontinued products (is_deleted).
+
+  - name: stg_orders
+    description: One row per order, with its current status. ordered_at is when the order was placed.
+
+  - name: stg_order_items
+    description: One row per order line. unit_price is the price at purchase time, not the current product price.
+
+  - name: stg_payments
+    description: One row per payment. paid_at is when the payment was recorded.
