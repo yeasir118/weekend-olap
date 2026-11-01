@@ -10,5 +10,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 WAREHOUSE_PATH = REPO_ROOT / "warehouse" / "analytics.duckdb"
 
+# Landing folder for files delivered by other teams (e.g. marketing's campaign CSVs).
+DATA_DIR = REPO_ROOT / "data"
+
 # One schema per medallion layer, plus `meta` for pipeline bookkeeping (watermarks).
 SCHEMAS = ("bronze", "silver", "gold", "meta")

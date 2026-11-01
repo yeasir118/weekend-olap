@@ -93,14 +93,15 @@ These are corrections or gaps in the outline. Each has a recommended default, so
 ## Epic 3 — CSV Ingestion (30m + stretch)
 
 **OLAP-301 · Campaign CSV + loader** — 20m
-- `data/marketing_campaigns.csv` (3 rows from the outline).
-- `ingestion/ingest_csv.py`: loads with `read_csv(..., all_varchar=true)` into `bronze.raw_campaigns`, adding `source_file` and `ingested_at`.
+- `data/marketing_campaigns_2026-11-01.csv` (3 rows from the outline). File naming convention: `marketing_campaigns_YYYY-MM-DD.csv`, one file per delivery.
+- `ingestion/ingest_csv.py`: loads every delivery in `data/` with `read_csv(..., all_varchar=true)` into `bronze.raw_campaigns`, adding `source_file`, `delivered_on` (from the file name) and `ingested_at`. Misnamed files are rejected before anything loads.
 - Why all_varchar: Bronze keeps values as the source sent them. Type casting is Silver's job.
 - AC: re-running doesn't duplicate rows. Pick a strategy (delete-then-insert by `source_file`, or skip already-loaded files) and write it down.
+- Why the date in the name: with a fixed name, delete-then-insert would wipe the previous delivery's rows every time a new file arrived.
 - Learn: batch file ingestion, source metadata, idempotency.
 
 **OLAP-302 · Malformed record handling** — 10m
-- Add `data/marketing_campaigns_bad.csv` with a non-numeric budget, a bad date, and a row with a missing column.
+- Add a second delivery (`data/marketing_campaigns_<later date>.csv`) with a non-numeric budget, a bad date, and a row with a missing column.
 - Decide: does Bronze accept it raw (recommended, then Silver flags or filters it) or is it rejected at ingest? Try `ignore_errors` / `store_rejects` in DuckDB to see the rejected rows.
 - AC: you can say where bad rows end up and why.
 - Learn: schema inference vs explicit schema, data validation, quarantine.
@@ -160,6 +161,7 @@ These are corrections or gaps in the outline. Each has a recommended default, so
 
 **OLAP-503 · Staging model (campaigns)** — 10m
 - `stg_campaigns`: `try_cast` budget and date. Rows that fail to cast are flagged as `is_valid = false` (or filtered, matching your OLAP-302 decision).
+- The same `campaign_id` can appear in several deliveries (e.g. a budget revised in a later file). Keep one row per campaign: the one from the latest `delivered_on`.
 - Learn: handling malformed records downstream of ingestion.
 
 **OLAP-504 · Silver tests** — 10m

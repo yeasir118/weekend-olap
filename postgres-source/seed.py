@@ -26,7 +26,7 @@ N_ORDERS = 1000
 HISTORY_START = datetime(2026, 1, 1, tzinfo=UTC)
 HISTORY_END = datetime(2026, 10, 31, 23, 59, tzinfo=UTC)
 
-# Must match data/marketing_campaigns.csv. An order can only be attributed to a campaign
+# Must match data/marketing_campaigns_2026-11-01.csv. An order can only be attributed to a campaign
 # that had already started.
 CAMPAIGN_STARTS = {
     1: datetime(2026, 1, 1, tzinfo=UTC),

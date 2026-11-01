@@ -104,7 +104,9 @@ Scenario: The marketing department provides campaign information through CSV fil
 
 Example:
 
-`marketing_campaigns.csv`
+`marketing_campaigns_2026-11-01.csv`
+
+Each delivery is named `marketing_campaigns_YYYY-MM-DD.csv` (the delivery date). Without a date, each new file would overwrite the last and history would be lost.
 
 ```csv
 campaign_id,campaign_name,channel,budget,start_date
@@ -120,8 +122,9 @@ Tasks:
 3. Preserve original source columns and values.
 4. Track ingestion metadata:
    - `source_file`
+   - `delivered_on` (parsed from the file name)
    - `ingested_at`
-5. Make ingestion **idempotent**: running it twice on the same file must not duplicate rows.
+5. Make ingestion **idempotent**: running it twice on the same file must not duplicate rows. Reject files that don't follow the naming convention.
 6. Create a second file with malformed rows (non-numeric budget, bad date, missing column) and decide where bad rows end up.
 7. Transform the data into Silver models using dbt.
 
@@ -490,8 +493,7 @@ olap-weekend/
 │   └── simulate_changes.py
 │
 ├── data/
-│   ├── marketing_campaigns.csv
-│   └── marketing_campaigns_bad.csv
+│   └── marketing_campaigns_YYYY-MM-DD.csv   -- one file per delivery
 │
 ├── ingestion/
 │   ├── setup_warehouse.py
