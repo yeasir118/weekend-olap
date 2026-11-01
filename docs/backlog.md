@@ -57,7 +57,7 @@ These are corrections or gaps in the outline. Each has a recommended default, so
 - `.venv`, `requirements.txt`: `duckdb`, `dbt-core>=1.10`, `dbt-duckdb`, `python-dotenv`, `faker`.
 - AC: `python -c "import duckdb"` and `dbt --version` both work.
 
-**OLAP-104 · DuckDB warehouse + schemas** — 10m
+**OLAP-104 · DuckDB warehouse + schemas** — 10m · [expanded](tickets/OLAP-104.md)
 - `ingestion/setup_warehouse.py` creates `warehouse/analytics.duckdb` with schemas `bronze`, `silver`, `gold`, `meta`. Idempotent (`CREATE SCHEMA IF NOT EXISTS`).
 - Learn: schemas are logical boundaries, not separate servers.
 
