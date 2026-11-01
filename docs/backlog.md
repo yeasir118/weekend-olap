@@ -6,6 +6,7 @@ Source: [outline.md](outline.md). This file breaks the outline into epics and ti
 - Ticket IDs: `OLAP-<epic><nn>` (e.g. `OLAP-301` = Epic 3, ticket 1).
 - Estimates are focused hours. Total core scope ≈ 10.5h; stretch tickets are marked **(stretch)**.
 - Every ticket has a **Learn** line: the concept you should be able to explain once it's done. That's the actual deliverable of this project. The code is how you get there.
+- Some tickets have an expanded write-up in [tickets/](tickets/) (`OLAP-xxx.md`). These are the ones worth exploring in depth. This file stays the index for everything else.
 
 ---
 
@@ -48,7 +49,7 @@ These are corrections or gaps in the outline. Each has a recommended default, so
 - Create the folder layout from outline §7, plus `docker-compose.yml`, `requirements.txt`, `.gitignore` (ignore `*.duckdb`, `.venv`, `dbt_project/target`, `logs`).
 - AC: `git init`, first commit.
 
-**OLAP-102 · Postgres via Docker** — 15m
+**OLAP-102 · Postgres via Docker** — 15m · [expanded](tickets/OLAP-102.md)
 - `docker-compose.yml` with `postgres:16`, a named volume, port 5432, credentials in `.env`.
 - AC: `docker compose up -d` works and `psql` connects.
 
