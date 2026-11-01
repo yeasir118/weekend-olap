@@ -1,0 +1,21 @@
+version: 2
+
+# Gold: the dimensional model (star schema) that analysts and dashboards query.
+#   dimensions/  descriptive context: who, what, when (dim_*)
+#   facts/       measurable events at a declared grain (fct_*)
+#   marts/       curated answers to one business question (mart_*)
+
+models:
+  - name: dim_date
+    description: >
+      One row per calendar day, 2020-01-01 to 2030-12-31. Facts join on their date column
+      (e.g. fct_orders.order_date = dim_date.date_day) to group by month, quarter, weekday
+      and so on with consistent definitions.
+    columns:
+      - name: date_day
+        description: The calendar day. Primary key.
+        data_tests: [unique, not_null]
+      - name: day_of_week
+        description: ISO weekday, 1 = Monday ... 7 = Sunday.
+      - name: is_weekend
+        description: Saturday or Sunday.
