@@ -25,7 +25,8 @@ The goal is to understand the complete data lifecycle:
 - Python — ingestion scripts
 - DuckDB — analytical database / local warehouse
 - dbt Core — data transformation and modeling
-- Metabase (optional) — BI and visualization
+- Docker — runs PostgreSQL locally
+- Metabase (stretch) — BI and visualization. Only attempt once the core pipeline works; driver setup can take an hour.
 
 ---
 
@@ -79,6 +80,18 @@ For example:
 
 These are logical separation boundaries, not separate database servers.
 
+A fourth schema, `meta`, holds pipeline bookkeeping such as sync watermarks.
+
+## Why a separate analytical engine? Row vs columnar storage
+
+PostgreSQL stores data **row by row**. That's ideal for OLTP: fetching or updating one order touches one place on disk.
+
+DuckDB stores data **column by column**. An analytical query like "sum revenue by month" reads only the `order_date` and `total_amount` columns across millions of rows, skips every other column, and compresses well because values in one column look alike.
+
+Same SQL, but opposite physical layouts, each optimized for a different access pattern. This is the core technical reason OLAP systems exist alongside OLTP systems.
+
+**Note:** DuckDB allows only one writer at a time. Close SQL clients (or open them read-only) before running ingestion or dbt, or you'll hit file-lock errors.
+
 ---
 
 # 2. Data Ingestion
@@ -108,7 +121,11 @@ Tasks:
 4. Track ingestion metadata:
    - `source_file`
    - `ingested_at`
-5. Transform the data into Silver models using dbt.
+5. Make ingestion **idempotent**: running it twice on the same file must not duplicate rows.
+6. Create a second file with malformed rows (non-numeric budget, bad date, missing column) and decide where bad rows end up.
+7. Transform the data into Silver models using dbt.
+
+Tip: load CSV columns into Bronze as text (`all_varchar=true` in DuckDB). Type casting is Silver's job, so a bad value doesn't fail the whole load.
 
 Concepts to understand:
 
@@ -116,6 +133,7 @@ Concepts to understand:
 - Batch ingestion
 - Schema inference
 - Source metadata
+- Idempotency
 - Data validation
 - Handling malformed records
 
@@ -130,6 +148,10 @@ Create the following source tables:
 - `orders`
 - `order_items`
 - `payments`
+
+Add a nullable `campaign_id` column to `orders`. This links orders to the marketing CSV so campaign data reaches the Gold layer.
+
+Every source table gets `created_at`, `updated_at` and `deleted_at` columns.
 
 Tasks:
 
@@ -156,7 +178,11 @@ Understand:
 
 Simulate incremental ingestion.
 
-Add an `updated_at` column to your PostgreSQL source tables.
+Use the `updated_at` column on your PostgreSQL source tables.
+
+**Important:** PostgreSQL does not update `updated_at` automatically. Add a `BEFORE UPDATE` trigger that sets `updated_at = now()`. Without it, incremental sync silently misses changed rows.
+
+Store watermarks in a `meta.sync_state` table in DuckDB (one row per source table).
 
 Implement the following logic:
 
@@ -164,17 +190,20 @@ Implement the following logic:
 1. Read the last successful sync timestamp.
 2. Fetch records updated after that timestamp.
 3. Upsert the records into Bronze.
-4. Update the sync timestamp.
+4. Update the sync timestamp to max(updated_at) of the fetched rows.
 ```
+
+Set the new watermark from the data (`max(updated_at)`), not from the clock (`now()`). Clock skew and late-committing transactions can otherwise cause missed rows. Update the watermark in the same transaction as the upsert.
 
 Test this by:
 
 - Inserting a new user.
 - Updating an existing user.
+- Soft-deleting a user (setting `deleted_at`).
+- Hard-deleting a row.
 - Running the ingestion script again.
 - Verifying that Bronze contains the latest records.
-
-Also introduce a `deleted_at` field to understand soft deletes.
+- Observing that the hard-deleted row is **still in Bronze**. This is expected, and it is the point of the exercise.
 
 **Important:** An `updated_at` watermark alone cannot detect hard deletes. Real production systems often use CDC (Change Data Capture) to capture inserts, updates, and deletes.
 
@@ -189,6 +218,12 @@ For this weekend, understand CDC conceptually. Do not implement a full CDC pipel
 - CDC
 - Soft deletes vs hard deletes
 - Data replication vs data transformation
+
+### 3. Schema Drift
+
+Simulate a routine application migration: add a column to `users` and rename a column in `products`. Re-run the pipeline and observe what breaks, and where.
+
+This shows why OLTP schema changes are a top cause of broken analytics pipelines, and why teams introduce **data contracts** between application and data teams.
 
 ---
 
@@ -255,10 +290,13 @@ Example models:
 ```text
 gold.dim_customers
 gold.dim_products
+gold.dim_campaigns
 gold.dim_date
 gold.fct_orders
+gold.fct_order_items
 gold.fct_payments
 gold.mart_monthly_revenue
+gold.mart_campaign_performance
 ```
 
 Responsibilities:
@@ -293,12 +331,15 @@ These tables are designed around application operations.
 ```text
 dim_customers
 dim_products
+dim_campaigns
 dim_date
 
-fct_orders
-fct_payments
+fct_orders          -- grain: one row per order
+fct_order_items     -- grain: one row per order line
+fct_payments        -- grain: one row per payment
 
 mart_monthly_revenue
+mart_campaign_performance
 ```
 
 Learn the following concepts:
@@ -310,8 +351,24 @@ Learn the following concepts:
 - Grain of a fact table
 - Denormalization
 - Surrogate keys
+- Slowly Changing Dimensions (SCD Type 1 vs Type 2)
 
 Understand why analytical systems often use a different schema from operational systems.
+
+## Grain
+
+Always state a fact table's grain in one sentence before writing it. An order contains many products, so product-level measures (`product_id`, `quantity`) cannot live in an order-grain table. That's why `fct_orders` and `fct_order_items` are separate.
+
+## Slowly Changing Dimensions
+
+OLTP overwrites values: when a customer moves city, the old city is gone. A warehouse often needs history: "revenue by the customer's city *at the time of the order*."
+
+- **SCD Type 1:** overwrite, so no history is kept.
+- **SCD Type 2:** keep one row per version, with `valid_from` / `valid_to`.
+
+This is the reason surrogate keys exist: one customer can have several dimension rows, so the natural key is no longer unique.
+
+dbt implements SCD Type 2 with `dbt snapshot`. Note that a dbt snapshot is unrelated to the "initial snapshot" in section 2. Implementing it is stretch work, but understanding it isn't optional.
 
 ---
 
@@ -379,10 +436,13 @@ dim_products
   |
   v
 fct_orders
+fct_order_items
   |
   v
 mart_monthly_revenue
 ```
+
+dbt prefixes custom schemas by default (`main_silver` instead of `silver`). Override the `generate_schema_name` macro so models land in `silver` and `gold`. This is the one macro worth writing this weekend.
 
 Use `source()` to reference raw Bronze tables and `ref()` to reference other dbt models.
 
@@ -419,25 +479,42 @@ Organize the project as follows:
 ```text
 olap-weekend/
 │
+├── docker-compose.yml
+├── requirements.txt
+├── .env
+├── run_pipeline.ps1
+│
 ├── postgres-source/
-│   └── ecommerce.sql
+│   ├── ecommerce.sql
+│   ├── seed.py
+│   └── simulate_changes.py
 │
 ├── data/
-│   └── marketing_campaigns.csv
+│   ├── marketing_campaigns.csv
+│   └── marketing_campaigns_bad.csv
 │
 ├── ingestion/
+│   ├── setup_warehouse.py
+│   ├── ingest_csv.py
 │   ├── initial_snapshot.py
 │   └── incremental_sync.py
 │
 ├── warehouse/
-│   └── analytics.duckdb
+│   └── analytics.duckdb          -- schemas: bronze, silver, gold, meta
 │
 └── dbt_project/
+    ├── dbt_project.yml
+    ├── profiles.yml
+    ├── macros/
+    │   └── generate_schema_name.sql
+    ├── analyses/                  -- analytical queries
+    ├── tests/                     -- singular tests
     └── models/
         │
         ├── sources.yml
         │
         ├── silver/
+        │   ├── _silver.yml
         │   ├── stg_users.sql
         │   ├── stg_products.sql
         │   ├── stg_orders.sql
@@ -447,17 +524,22 @@ olap-weekend/
         │
         └── gold/
             │
+            ├── _gold.yml
+            │
             ├── dimensions/
             │   ├── dim_customers.sql
             │   ├── dim_products.sql
+            │   ├── dim_campaigns.sql
             │   └── dim_date.sql
             │
             ├── facts/
             │   ├── fct_orders.sql
+            │   ├── fct_order_items.sql
             │   └── fct_payments.sql
             │
             └── marts/
-                └── mart_monthly_revenue.sql
+                ├── mart_monthly_revenue.sql
+                └── mart_campaign_performance.sql
 ```
 
 ---
@@ -489,9 +571,13 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('dim_customers')
+                to: ref('stg_users')
                 field: customer_id
 ```
+
+Test relationships **within the same layer**: Silver tests reference Silver models, Gold tests reference Gold models. A Silver test that references a Gold model creates a backward dependency in the DAG.
+
+Also add one singular test (a SQL file in `tests/`) that reconciles totals: the sum of `fct_order_items.line_total` per order must equal `fct_orders.order_total`.
 
 Also understand why data quality testing is important in analytical pipelines.
 
@@ -508,7 +594,7 @@ Examples:
 ```sql
 SELECT
     date_trunc('month', order_date) AS month,
-    SUM(total_amount) AS revenue
+    SUM(order_total) AS revenue
 FROM gold.fct_orders
 GROUP BY 1
 ORDER BY 1;
@@ -518,27 +604,44 @@ ORDER BY 1;
 
 ```sql
 SELECT
-    customer_id,
-    SUM(total_amount) AS total_revenue
-FROM gold.fct_orders
-GROUP BY customer_id
+    c.customer_name,
+    SUM(f.order_total) AS total_revenue
+FROM gold.fct_orders f
+JOIN gold.dim_customers c USING (customer_key)
+GROUP BY c.customer_name
 ORDER BY total_revenue DESC
 LIMIT 10;
 ```
 
 ### Product Performance
 
+Product-level measures come from the order-line fact table, not `fct_orders`:
+
 ```sql
 SELECT
-    product_id,
-    COUNT(*) AS total_orders,
-    SUM(quantity) AS units_sold
-FROM gold.fct_orders
-GROUP BY product_id
+    p.product_name,
+    COUNT(DISTINCT f.order_id) AS total_orders,
+    SUM(f.quantity) AS units_sold
+FROM gold.fct_order_items f
+JOIN gold.dim_products p USING (product_key)
+GROUP BY p.product_name
 ORDER BY units_sold DESC;
 ```
 
+### Month-over-Month Growth (window function)
+
+```sql
+SELECT
+    month,
+    revenue,
+    revenue / LAG(revenue) OVER (ORDER BY month) - 1 AS mom_growth
+FROM gold.mart_monthly_revenue
+ORDER BY month;
+```
+
 Understand why these analytical queries are executed against Gold models instead of directly against the OLTP tables.
+
+To make this concrete, write the monthly revenue query once against the raw PostgreSQL tables (joins, status filters, deleted-row handling) and compare it to the Gold version.
 
 ---
 
@@ -546,17 +649,20 @@ Understand why these analytical queries are executed against Gold models instead
 
 Target: 9–11 hours.
 
-| Activity | Time |
-|---|---:|
-| OLTP vs OLAP, ETL/ELT, warehouse concepts | 1 hour |
-| Medallion architecture and dimensional modeling | 1 hour |
-| PostgreSQL + DuckDB setup | 1 hour |
-| CSV ingestion into Bronze | 30 minutes |
-| PostgreSQL snapshot + incremental sync | 1.5 hours |
-| dbt Silver transformations | 1 hour |
-| Gold models, marts and DAG | 1.5 hours |
-| Views, tables and materialization concepts | 30 minutes |
-| dbt tests and analytical queries | 1 hour |
+Mix the reading into the build rather than doing it all up front. Read each concept right before the step that uses it.
+
+| Session | Activity | Read first | Time |
+|---|---|---|---:|
+| Sat AM | OLTP vs OLAP, ETL/ELT, row vs columnar | §1 | 45 minutes |
+| Sat AM | PostgreSQL + DuckDB + dbt setup, source schema and seed data | — | 1.5 hours |
+| Sat PM | CSV ingestion into Bronze | Idempotency, schema inference | 30 minutes |
+| Sat PM | PostgreSQL snapshot + incremental sync + delete tests | Watermarks, CDC | 1.5 hours |
+| Sun AM | dbt Silver transformations + tests | dbt intro, medallion | 1 hour |
+| Sun AM | Gold models, marts and DAG | Kimball: grain, star schema, SCD | 1.5 hours |
+| Sun PM | Materialization experiment (view vs table vs incremental) | dbt materializations | 30 minutes |
+| Sun PM | Analytical queries, schema drift exercise, wrap-up | — | 1.5 hours |
+
+**Stretch (if time remains):** SCD Type 2 with `dbt snapshot`, Parquet export, Metabase dashboard.
 
 ---
 
@@ -615,16 +721,21 @@ Introduce orchestration and dedicated ingestion tools later, once you understand
 By Sunday evening, you should be able to explain:
 
 - [ ] Why OLAP exists alongside OLTP.
+- [ ] How row and columnar storage differ, and why it matters.
 - [ ] What a data warehouse does.
 - [ ] How data moves from an OLTP database into a warehouse.
 - [ ] How CSV ingestion differs from database ingestion.
 - [ ] What initial snapshots and incremental loading mean.
 - [ ] What CDC is and why it matters.
+- [ ] Why ingestion must be idempotent.
+- [ ] How an OLTP schema migration can break the pipeline.
 - [ ] Why Bronze, Silver and Gold layers exist.
 - [ ] How dbt transforms data.
 - [ ] How dbt builds a dependency DAG.
 - [ ] How views differ from tables and materialized views.
 - [ ] What fact and dimension tables are.
+- [ ] What the grain of a fact table is, and how to pick it.
+- [ ] How SCD Type 2 preserves history that OLTP overwrites.
 - [ ] What data marts are.
 - [ ] How data quality tests protect downstream analytics.
 - [ ] Why BI tools consume Gold-layer datasets.

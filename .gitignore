@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets (commit .env.example instead)
+.env
+
+# DuckDB warehouse: a build artifact, rebuilt by the pipeline
+*.duckdb
+*.duckdb.wal
+
+# dbt build output
+dbt_project/target/
+dbt_project/logs/
+dbt_project/dbt_packages/
+dbt_project/.user.yml
+logs/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
