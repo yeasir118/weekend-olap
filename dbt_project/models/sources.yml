@@ -1,0 +1,39 @@
+version: 2
+
+# Tables dbt reads but doesn't build: everything the ingestion scripts load into Bronze.
+# Models reference them with {{ source('bronze', '<table>') }}, never by hard-coded name,
+# so dbt knows the lineage and can check freshness.
+
+sources:
+  - name: bronze
+    description: Raw data as ingested. Loaded by the scripts in ingestion/, not by dbt.
+    schema: bronze
+    config:
+      # Freshness = time since the newest ingested_at. A quiet source (no changes since the
+      # last sync) also looks stale, because incremental sync only writes changed rows.
+      loaded_at_field: ingested_at
+      freshness:
+        warn_after: {count: 24, period: hour}
+        error_after: {count: 48, period: hour}
+
+    tables:
+      - name: raw_users
+        description: Mirror of postgres.public.users (initial_snapshot.py + incremental_sync.py).
+      - name: raw_products
+        description: Mirror of postgres.public.products.
+      - name: raw_orders
+        description: Mirror of postgres.public.orders.
+      - name: raw_order_items
+        description: Mirror of postgres.public.order_items.
+      - name: raw_payments
+        description: Mirror of postgres.public.payments.
+
+      - name: raw_campaigns
+        description: >
+          Marketing campaign CSV deliveries (ingest_csv.py), all columns as text. One row per
+          line per delivery file; the same campaign_id can appear in several deliveries.
+        config:
+          # Files arrive occasionally, not daily, so a gap of a few days is normal.
+          freshness:
+            warn_after: {count: 7, period: day}
+            error_after: {count: 30, period: day}
