@@ -11,19 +11,117 @@ version: 2
 #   - Soft-deleted rows are kept and flagged with is_deleted, not filtered out. Gold decides
 #     per use case: a discontinued product still belongs to its past orders' revenue.
 #   - Hard-deleted source rows are still present (Bronze never learns about them, see notes.md).
+#
+# Tests: every key is unique and not null, and relationships point at other Silver models,
+# never at Gold (a Silver test depending on Gold would run the DAG backwards).
 
 models:
   - name: stg_users
     description: One row per user account (a customer). Includes closed accounts (is_deleted).
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+      - name: email
+        data_tests: [unique, not_null]
 
   - name: stg_products
     description: One row per product, at its current price. Includes discontinued products (is_deleted).
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+      - name: sku
+        data_tests: [unique, not_null]
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [books, clothing, electronics, home, sports]
 
   - name: stg_orders
     description: One row per order, with its current status. ordered_at is when the order was placed.
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: customer_id
+      - name: campaign_id
+        description: Nullable; set only for orders attributed to a marketing campaign.
+        data_tests:
+          # Warn, not error: campaigns arrive by CSV on marketing's schedule, so an order can
+          # briefly reference a campaign whose file hasn't been delivered yet.
+          - relationships:
+              arguments:
+                to: ref('stg_campaigns')
+                field: campaign_id
+              config:
+                severity: warn
+      - name: order_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [pending, paid, shipped, cancelled]
 
   - name: stg_order_items
     description: One row per order line. unit_price is the price at purchase time, not the current product price.
+    columns:
+      - name: order_item_id
+        data_tests: [unique, not_null]
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: product_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
 
   - name: stg_payments
     description: One row per payment. paid_at is when the payment was recorded.
+    columns:
+      - name: payment_id
+        data_tests: [unique, not_null]
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: payment_method
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [card, paypal, bank_transfer]
+
+  - name: stg_campaigns
+    description: >
+      One row per marketing campaign, from its latest CSV delivery. Text values from Bronze
+      are cast here. Rows whose budget or start_date can't be parsed are kept with
+      is_valid = false and the reason in validation_errors, so Gold can still show the
+      campaign (orders may reference it) while treating the unknown value as NULL.
+    columns:
+      - name: campaign_id
+        data_tests: [unique, not_null]
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [email, social, search, display]
+      - name: is_valid
+        description: >
+          False when budget or start_date couldn't be parsed; see validation_errors.
+          tests/assert_campaigns_are_valid.sql warns while any such rows exist.
+        data_tests: [not_null]
