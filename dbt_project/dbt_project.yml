@@ -36,5 +36,11 @@ models:
       +schema: gold
       +materialized: table
 
+vars:
+  # Which time zone defines a business "day" in Gold (order_date etc.). Silver timestamps are
+  # UTC; the to_reporting_date() macro converts them. Most customers and the business are in
+  # Bangladesh, so a "day" means a Dhaka day.
+  reporting_timezone: Asia/Dhaka
+
 flags:
   send_anonymous_usage_stats: false

@@ -4,6 +4,15 @@ version: 2
 #   dimensions/  descriptive context: who, what, when (dim_*)
 #   facts/       measurable events at a declared grain (fct_*)
 #   marts/       curated answers to one business question (mart_*)
+#
+# Dimensions:
+#   - Surrogate key (<entity>_key) = md5 of the natural key: stable across rebuilds, so a fact
+#     built yesterday still joins to a dimension rebuilt today. The natural key (<entity>_id)
+#     is kept alongside for tracing back to the source.
+#   - SCD Type 1: attributes show current values (a customer who moved shows the new city on
+#     all their orders). Keeping history would be Type 2, see OLAP-901.
+#   - Soft-deleted entities are kept and flagged: their past facts still need them.
+#   - Dates are business dates in var reporting_timezone, via the to_reporting_date() macro.
 
 models:
   - name: dim_date
@@ -19,3 +28,35 @@ models:
         description: ISO weekday, 1 = Monday ... 7 = Sunday.
       - name: is_weekend
         description: Saturday or Sunday.
+
+  - name: dim_customers
+    description: One row per customer, including closed accounts (is_deleted).
+    columns:
+      - name: customer_key
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests: [unique, not_null]
+      - name: first_order_date
+        description: Business date of the first non-cancelled order. NULL if the customer never ordered.
+      - name: lifetime_orders
+        description: Orders placed and not cancelled (pending included). Activity, not revenue.
+
+  - name: dim_products
+    description: One row per product, including discontinued ones.
+    columns:
+      - name: product_key
+        data_tests: [unique, not_null]
+      - name: product_id
+        data_tests: [unique, not_null]
+      - name: current_unit_price
+        description: Today's list price. The price actually paid is fct_order_items.unit_price.
+
+  - name: dim_campaigns
+    description: One row per marketing campaign, from its latest CSV delivery.
+    columns:
+      - name: campaign_key
+        data_tests: [unique, not_null]
+      - name: campaign_id
+        data_tests: [unique, not_null]
+      - name: has_valid_details
+        description: False when marketing's budget or start date couldn't be read (see stg_campaigns).
