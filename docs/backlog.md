@@ -61,7 +61,7 @@ These are corrections or gaps in the outline. Each has a recommended default, so
 - `ingestion/setup_warehouse.py` creates `warehouse/analytics.duckdb` with schemas `bronze`, `silver`, `gold`, `meta`. Idempotent (`CREATE SCHEMA IF NOT EXISTS`).
 - Learn: schemas are logical boundaries, not separate servers.
 
-**OLAP-105 · dbt project init + profile** — 15m
+**OLAP-105 · dbt project init + profile** — 15m · [expanded](tickets/OLAP-105.md)
 - `dbt init` inside `dbt_project/`. Add a `profiles.yml` pointing at the DuckDB file. Configure `dbt_project.yml` so `silver/` models build into the `silver` schema and `gold/` models into `gold`.
 - Watch out: by default dbt *prefixes* custom schemas (`main_silver`). Override with a `generate_schema_name` macro. This is the one macro worth writing.
 - AC: `dbt debug` passes.

@@ -1,0 +1,12 @@
+# Kept in the repo (not ~/.dbt/) because a DuckDB profile holds no secrets, only a file path.
+# dbt finds this file because dbt is always run from inside dbt_project/ (project convention).
+weekend_olap:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Relative paths resolve from where dbt is run, not from this file. So: run dbt from dbt_project/.
+      path: ../warehouse/analytics.duckdb
+      # Fallback schema for models without a custom schema (see macros/generate_schema_name.sql).
+      schema: main
+      threads: 4
