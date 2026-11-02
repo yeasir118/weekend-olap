@@ -149,3 +149,46 @@ as a safety net.
 - So a dbt table won't refresh itself. In exchange, it works on any database, its logic lives
   in version-controlled SQL, and it's tested like everything else. (DuckDB has no
   materialized views. dbt offers a `materialized_view` materialization on adapters that do.)
+
+## OLAP-703 · The same question on OLTP vs Gold
+
+Monthly revenue written twice (`sql/oltp_vs_gold/`): once against production Postgres, once
+against `gold.mart_monthly_revenue`. **Both return identical results for all 11 months.**
+
+**The OLTP version: 40 lines, 5 rules to get right.**
+1. Business months are Dhaka months: `created_at at time zone 'Asia/Dhaka'` before truncating.
+2. Revenue = status `paid` or `shipped`.
+3. ...and `deleted_at is null`. Forget it and revenue is overstated, with no error.
+4. Gap-fill months with `generate_series`, or month-over-month comparisons skip empty months.
+5. Average order value over the *same* orders as revenue, not over all orders.
+
+**The Gold version: one line.** `select ... from gold.mart_monthly_revenue`. The five rules
+are applied once, in dbt, and covered by tests.
+
+| | OLTP query | Gold query |
+|---|---|---|
+| Complexity | Every business rule re-typed in every query | Rules applied once upstream; the query only selects |
+| Who can write it | Someone who knows the schema *and* every convention (status values, soft deletes, time zone) | Anyone who can write `select`; the column names say what they mean |
+| Consistency | Two analysts with slightly different filters get two different numbers | One definition; every report agrees |
+| Load on production | Reads the app's busiest table (see below) | Zero: runs on the warehouse |
+| Freshness | **Live**, to the second | As of the last sync + `dbt build` |
+| Shape | Normalized for writes: joins needed for anything descriptive | Star schema and marts, shaped for questions |
+
+**Load on production.** The query plan (`explain (analyze, buffers)`) shows a **Seq Scan on
+orders**: every row of the table is read. That's 1 ms here. At 100 million orders:
+- It's a full scan of the app's hottest table. The report's pages push the app's working set
+  out of Postgres' cache, so checkout queries get slower while the report runs.
+- An index on `created_at` wouldn't save it: a full-history report needs most of the rows anyway.
+- A row store reads whole rows (every column) to use 4 of them. A columnar warehouse like
+  DuckDB reads only the columns the query names.
+- A long-running query holds an old snapshot open, which stops vacuum cleaning up dead rows
+  (table bloat). On a read replica, it can be cancelled by replication conflicts, or delay
+  replication.
+
+One BI dashboard refreshing every few minutes, or ten analysts at month end, is enough to
+turn this into an incident.
+
+**When querying OLTP is still right:** operational, real-time, narrow questions. "How many
+orders are pending *right now*?" or "Show this customer's last 5 orders" touch a few rows
+through an index and need to be live. Gold is for questions about history, aggregated across
+many rows. That's why BI tools point at Gold.
