@@ -1,15 +1,15 @@
-Welcome to your new dbt project!
+# dbt project: weekend_olap
 
-### Using the starter project
+Builds the Silver (`stg_*` views) and Gold (dimensions, facts, marts) layers in
+`../warehouse/analytics.duckdb` from the Bronze tables loaded by `../ingestion/`.
 
-Try running the following commands:
-- dbt run
-- dbt test
+Always run dbt from this folder: `profiles.yml` lives here, and the warehouse path in it is
+relative to this folder.
 
+```powershell
+..\.venv\Scripts\dbt build                      # all models + tests
+..\.venv\Scripts\dbt build -s +fct_orders       # one model and everything upstream
+..\.venv\Scripts\dbt show -s top_customers      # run an analysis
+```
 
-### Resources:
-- Learn more about dbt [in the docs](https://docs.getdbt.com/docs/introduction)
-- Check out [Discourse](https://discourse.getdbt.com/) for commonly asked questions and answers
-- Join the [chat](https://community.getdbt.com/) on Slack for live discussions and support
-- Find [dbt events](https://events.getdbt.com) near you
-- Check out [the blog](https://blog.getdbt.com/) for the latest news on dbt's development and best practices
+The architecture, setup and design decisions are in the [root README](../README.md).

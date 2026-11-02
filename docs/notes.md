@@ -192,3 +192,84 @@ turn this into an incident.
 orders are pending *right now*?" or "Show this customer's last 5 orders" touch a few rows
 through an index and need to be live. Gold is for questions about history, aggregated across
 many rows. That's why BI tools point at Gold.
+
+## OLAP-802 · Learning checklist
+
+Answer each from memory, in two or three sentences, without looking anything up. Anything you
+can't answer becomes a follow-up to read about (or to ask about).
+
+1. **Why OLAP exists alongside OLTP.**
+
+   _Answer:_
+
+2. **How row and columnar storage differ, and why it matters.**
+
+   _Answer:_
+
+3. **What a data warehouse does.**
+
+   _Answer:_
+
+4. **How data moves from an OLTP database into a warehouse.**
+
+   _Answer:_
+
+5. **How CSV ingestion differs from database ingestion.**
+
+   _Answer:_
+
+6. **What initial snapshots and incremental loading mean.**
+
+   _Answer:_
+
+7. **What CDC is and why it matters.**
+
+   _Answer:_
+
+8. **Why ingestion must be idempotent.**
+
+   _Answer:_
+
+9. **How an OLTP schema migration can break the pipeline.**
+
+   _Answer:_
+
+10. **Why Bronze, Silver and Gold layers exist.**
+
+   _Answer:_
+
+11. **How dbt transforms data.**
+
+   _Answer:_
+
+12. **How dbt builds a dependency DAG.**
+
+   _Answer:_
+
+13. **How views differ from tables and materialized views.**
+
+   _Answer:_
+
+14. **What fact and dimension tables are.**
+
+   _Answer:_
+
+15. **What the grain of a fact table is, and how to pick it.**
+
+   _Answer:_
+
+16. **How SCD Type 2 preserves history that OLTP overwrites.**
+
+   _Answer:_
+
+17. **What data marts are.**
+
+   _Answer:_
+
+18. **How data quality tests protect downstream analytics.**
+
+   _Answer:_
+
+19. **Why BI tools consume Gold-layer datasets.**
+
+   _Answer:_
