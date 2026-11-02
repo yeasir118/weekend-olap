@@ -135,3 +135,38 @@ models:
         description: card, paypal or bank_transfer. Kept on the fact; too small for its own dimension.
       - name: amount
         description: Amount received. Additive.
+
+  # Marts: one table per business question, already joined and aggregated, so dashboards and
+  # analysts read them directly. They hold no logic of their own beyond aggregation: revenue
+  # definitions come from the facts.
+
+  - name: mart_monthly_revenue
+    description: >
+      One row per month from the first order to the latest, months without sales included.
+      All columns count revenue orders only (paid or shipped, not soft-deleted).
+    columns:
+      - name: month
+        description: First day of the month (reporting timezone).
+        data_tests: [unique, not_null]
+      - name: orders
+        description: Revenue orders placed in the month.
+      - name: revenue
+        description: Sum of fct_orders.revenue.
+      - name: avg_order_value
+        description: revenue / orders. NULL in a month with no orders.
+      - name: customers
+        description: Distinct customers with at least one revenue order in the month.
+
+  - name: mart_campaign_performance
+    description: >
+      One row per campaign, including campaigns with no orders yet. Attribution: the order's
+      campaign_id (set by the app at checkout). Revenue orders only.
+    columns:
+      - name: campaign_id
+        data_tests: [unique, not_null]
+      - name: attributed_orders
+        description: Revenue orders carrying this campaign_id.
+      - name: attributed_revenue
+        description: Sum of their revenue.
+      - name: revenue_to_budget
+        description: attributed_revenue / budget. NULL when the budget is unknown or zero.
