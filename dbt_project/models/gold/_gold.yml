@@ -13,6 +13,10 @@ version: 2
 #     all their orders). Keeping history would be Type 2, see OLAP-901.
 #   - Soft-deleted entities are kept and flagged: their past facts still need them.
 #   - Dates are business dates in var reporting_timezone, via the to_reporting_date() macro.
+#
+# Tests: every key is unique and not null; every fact key has a relationships test to its
+# dimension (no orphan rows that would silently drop out of an inner join); singular tests in
+# tests/ check that facts at different grains reconcile.
 
 models:
   - name: dim_date
@@ -70,12 +74,30 @@ models:
         description: Natural key of the order (a degenerate dimension; there is no dim_orders).
         data_tests: [unique, not_null]
       - name: customer_key
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
       - name: campaign_key
         description: NULL when the order isn't attributed to a campaign.
+        data_tests:
+          # Warn, as in Silver: a campaign's CSV can arrive after its first orders.
+          - relationships:
+              arguments:
+                to: ref('dim_campaigns')
+                field: campaign_key
+              config:
+                severity: warn
       - name: order_date
         description: Business date of the order in var reporting_timezone. Joins dim_date.date_day.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
       - name: is_revenue
         description: True when the order counts as revenue (paid or shipped, not soft-deleted).
       - name: line_count
@@ -97,15 +119,44 @@ models:
         data_tests: [unique, not_null]
       - name: order_id
         description: The order this line belongs to (degenerate dimension). Joins fct_orders.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
       - name: product_key
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_key
       - name: customer_key
         description: Inherited from the order. NULL would mean the line's order is missing.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
+      - name: campaign_key
+        description: Inherited from the order. NULL when not attributed to a campaign.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_campaigns')
+                field: campaign_key
+              config:
+                severity: warn
       - name: order_date
         description: Business date of the order. Joins dim_date.date_day.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
       - name: is_revenue
         description: True when the order counts as revenue and the line isn't soft-deleted.
       - name: unit_price
@@ -124,13 +175,28 @@ models:
         data_tests: [unique, not_null]
       - name: order_id
         description: The order paid for (degenerate dimension). Joins fct_orders.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
       - name: customer_key
         description: The customer of the order paid for.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
       - name: payment_date
         description: Business date the payment was received, in var reporting_timezone. Joins dim_date.date_day.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
       - name: payment_method
         description: card, paypal or bank_transfer. Kept on the fact; too small for its own dimension.
       - name: amount
